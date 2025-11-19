@@ -1,0 +1,103 @@
+// test_program.alu
+// This file demonstrates the ALU language with type annotations
+
+// Type aliases
+type Distance = int
+type Coordinate = float
+
+// Typed function with parameters
+function int factorial(int n) do
+    if n <= 1 then
+        1
+    else
+        n * factorial$(n - 1)
+    end
+end fact
+
+// Data structure with typed fields
+data Point with float x, float y
+    constructor = struct(float x, float y)
+    
+    function float distance() do
+        x * x + y * y
+    end dist
+end point
+
+// Data structure for a person
+data Person with string name, int age, bool active
+    constructor = struct(string name, int age, bool active)
+end person
+
+// Function using structs
+function float calculateDistance(Point p1, Point p2) do
+    float dx = p1.x - p2.x
+    float dy = p1.y - p2.y
+    dx * dx + dy * dy
+end distance
+
+// Iterator with types
+iter = iterator int (int start, int end) yielding (int value)
+
+// Main function demonstrating type usage
+function test() do
+    // Typed variable declarations
+    int count = 10
+    string message = "Hello, ALU!"
+    bool flag = true
+    
+    // Struct literals
+    Point origin = Point{x = 0.0, y = 0.0}
+    Point target = Point{x = 3.0, y = 4.0}
+    Person alice = Person{name = "Alice", age = 30, active = true}
+    
+    // Array literals
+    int[] numbers = [1, 2, 3, 4, 5]
+    string[] words = ["hello", "world"]
+    
+    // Tuple literals
+    (int, string) pair = (42, "answer")
+    
+    // Type casting
+    float pi = cast<float>(3)
+    int rounded = cast<int>(3.14159)
+    
+    // Type assertion
+    assert count : int
+    
+    // Loop with typed variable
+    for int i from 0 to 10 do
+        count = count + i
+    end
+    
+    // Conditional with type checking
+    if flag then
+        message = "Flag is true"
+    else
+        message = "Flag is false"
+    end
+    
+    // Function calls
+    float dist = calculateDistance$(origin, target)
+    int result = factorial$(5)
+end main
+
+// Example with type errors (commented out)
+// function errors() do
+//     // Type mismatch: assigning string to int
+//     int x = "hello"
+//     
+//     // Wrong field type
+//     Point p = Point{x = "wrong", y = 2.0}
+//     
+//     // Undefined field
+//     Person bob = Person{name = "Bob", age = 25, active = true}
+//     string job = bob.job  // Field 'job' doesn't exist
+//     
+//     // Wrong number of arguments
+//     int y = factorial$(1, 2, 3)
+//     
+//     // Non-boolean condition
+//     if 42 then
+//         x = 1
+//     end
+// end errors
