@@ -1,413 +1,219 @@
 module Main
 
 import Syntax;
-import AST;
 import Parser;
+import AST;
+import TypeChecker;
 import ParseTree;
 import IO;
+import Message;
 import String;
 
 // ============================================================================
-// Main Functions
+// Main Entry Point
 // ============================================================================
 
-// Run an AUL program from a file
-void runAULFile(loc file) {
-    println("========================================");
-    println("Running AUL program: <file>");
-    println("========================================");
+void main(list[str] args) {
+    if (size(args) == 0) {
+        println("Usage: main <filename.alu>");
+        return;
+    }
+    
+    str filename = args[0];
+    loc file = |file:///| + filename;
+    
+    println("Processing ALU file: <filename>");
+    println("=" * 50);
     
     try {
-        // Parse the file
-        AModule ast = parseAULFile(file);
+        // Step 1: Parse the file
+        println("\n[1] Parsing...");
+        AModule ast = parseALUFile(file);
+        println("    ✓ Parsing successful");
         
-        // Print the AST
-        println("\n--- Abstract Syntax Tree ---");
-        iprint(ast);
+        // Step 2: Type check
+        println("\n[2] Type checking...");
+        checkTypes(ast);
         
-        // Execute the program
-        println("\n--- Program Output ---");
-        execute(ast);
+        // If type checking succeeds, we could continue to code generation
+        // generateCode(ast);
         
-        println("\n========================================");
-        println("Program execution completed successfully");
-        println("========================================");
+    } catch ParseError(loc l): {
+        println("    ✗ Parse error at <l>");
+    } catch value v: {
+        println("    ✗ Error: <v>");
     }
-    catch ParseError(loc l): {
-        println("Parse error at <l>");
-    }
-    catch e: {
-        println("Error: <e>");
-    }
+    
+    println("\n" + "=" * 50);
 }
 
-// Run an AUL program from a string
-void runAULString(str program) {
-    println("========================================");
-    println("Running AUL program from string");
-    println("========================================");
+// Alternative: Process a string directly
+void processALUString(str input) {
+    println("Processing ALU code:");
+    println("=" * 50);
     
     try {
-        // Parse the string
-        AModule ast = parseAUL(program);
+        // Step 1: Parse the string
+        println("\n[1] Parsing...");
+        AModule ast = parseALU(input);
+        println("    ✓ Parsing successful");
         
-        // Print the AST
-        println("\n--- Abstract Syntax Tree ---");
-        iprint(ast);
+        // Step 2: Type check
+        println("\n[2] Type checking...");
+        checkTypes(ast);
         
-        // Execute the program
-        println("\n--- Program Output ---");
-        execute(ast);
+    } catch ParseError(loc l): {
+        println("    ✗ Parse error at <l>");
+    } catch value v: {
+        println("    ✗ Error: <v>");
+    }
+    
+    println("\n" + "=" * 50);
+}
+
+// ============================================================================
+// Test Functions
+// ============================================================================
+
+void testValidProgram() {
+    str program = 
+        "// Test program with types
+        function int fibonacci(int n) do
+            if n \< 2 then
+                n
+            else
+                fibonacci$(n - 1) + fibonacci$(n - 2)
+            end
+        end fib
         
-        println("\n========================================");
-        println("Program execution completed successfully");
-        println("========================================");
-    }
-    catch ParseError(loc l): {
-        println("Parse error at <l>");
-    }
-    catch e: {
-        println("Error: <e>");
-    }
-}
-
-// Parse and show AST without executing
-void showAST(loc file) {
-    println("========================================");
-    println("Parsing AUL file: <file>");
-    println("========================================");
-    
-    try {
-        AModule ast = parseAULFile(file);
-        println("\n--- Abstract Syntax Tree ---");
-        iprint(ast);
-    }
-    catch ParseError(loc l): {
-        println("Parse error at <l>");
-    }
-    catch e: {
-        println("Error: <e>");
-    }
-}
-
-// Validate syntax of an AUL file
-bool validateSyntax(loc file) {
-    println("Validating syntax of: <file>");
-    
-    try {
-        parse(#start[Module], file);
-        println("✓ Syntax is valid");
-        return true;
-    }
-    catch ParseError(loc l): {
-        println("✗ Parse error at <l>");
-        return false;
-    }
-}
-
-// ============================================================================
-// Execution Engine (Interpreter)
-// ============================================================================
-
-// Environment for storing variables and functions
-alias Env = map[str, Value];
-
-// Values that can be computed
-data Value
-    = vint(int n)
-    | vfloat(real r)
-    | vbool(bool b)
-    | vchar(str c)
-    | vstring(str s)
-    | vlist(list[Value] elements)
-    | vfunction(str name, list[str] params, list[AStatement] body, Env closure)
-    | vnull();
-
-// Execute the module
-void execute(AModule m) {
-    Env env = ();
-    
-    // Initialize module variables
-    for (v <- m.variables) {
-        env[v] = vnull();
-    }
-    
-    // Process all items (functions and data definitions)
-    for (item <- m.items) {
-        env = executeItem(item, env);
-    }
-    
-    // Look for and execute main function if it exists
-    if ("main" in env) {
-        println("\n--- Executing main function ---");
-        Value result = callFunction(env["main"], [], env);
-        println("Result: <formatValue(result)>");
-    } else {
-        println("\nNote: No main function found in program");
-    }
-}
-
-// Execute an item (function or data definition)
-Env executeItem(afunction(AFunction func), Env env) {
-    return executeFunction(func, env);
-}
-
-Env executeItem(adata(AData def), Env env) {
-    // For now, just register data constructors
-    // Full data type support would require more implementation
-    return env;
-}
-
-// Execute a function definition
-Env executeFunction(function(str name, list[str] params, list[AStatement] body), Env env) {
-    env[name] = vfunction(name, params, body, env);
-    return env;
-}
-
-Env executeFunction(function(str name, list[str] params, list[AStatement] body, str assignedTo), Env env) {
-    Value func = vfunction(name, params, body, env);
-    env[name] = func;
-    env[assignedTo] = func;
-    return env;
-}
-
-// Call a function
-Value callFunction(vfunction(str name, list[str] params, list[AStatement] body, Env closure), list[Value] args, Env env) {
-    // Create new environment with parameters bound to arguments
-    Env localEnv = closure;
-    
-    if (size(params) != size(args)) {
-        throw "Function <name> expects <size(params)> arguments, got <size(args)>";
-    }
-    
-    for (i <- [0..size(params)]) {
-        localEnv[params[i]] = args[i];
-    }
-    
-    // Execute function body
-    Value result = vnull();
-    for (stmt <- body) {
-        result = executeStatement(stmt, localEnv).val;
-    }
-    
-    return result;
-}
-
-default Value callFunction(Value v, list[Value] args, Env env) {
-    throw "Cannot call non-function value: <v>";
-}
-
-// Execute a statement and return updated environment and result value
-tuple[Env env, Value val] executeStatement(AStatement stmt, Env env) {
-    switch(stmt) {
-        case expression(AExpression expr): {
-            Value v = evaluateExpression(expr, env);
-            return <env, v>;
-        }
-        case variables(list[str] vars): {
-            for (v <- vars) {
-                env[v] = vnull();
-            }
-            return <env, vnull()>;
-        }
-        case ifThenElse(AExpression cond, list[AStatement] thenBody, list[AStatement] elseBody): {
-            Value condVal = evaluateExpression(cond, env);
-            if (isTruthy(condVal)) {
-                Value result = vnull();
-                for (s <- thenBody) {
-                    result = executeStatement(s, env).val;
-                }
-                return <env, result>;
-            } else {
-                Value result = vnull();
-                for (s <- elseBody) {
-                    result = executeStatement(s, env).val;
-                }
-                return <env, result>;
-            }
-        }
-        default: {
-            println("Warning: Unimplemented statement type: <stmt>");
-            return <env, vnull()>;
-        }
-    }
-}
-
-// Evaluate an expression
-Value evaluateExpression(AExpression expr, Env env) {
-    switch(expr) {
-        case principal(APrincipal p): return evaluatePrincipal(p, env);
-        case parenthesis(AExpression e): return evaluateExpression(e, env);
-        case listBracket(AExpression e): return vlist([evaluateExpression(e, env)]);
-        case unaryMinus(AExpression e): {
-            Value v = evaluateExpression(e, env);
-            if (vint(int n) := v) return vint(-n);
-            if (vfloat(real r) := v) return vfloat(-r);
-            throw "Cannot negate non-numeric value";
-        }
-        case add(AExpression lhs, AExpression rhs): {
-            Value l = evaluateExpression(lhs, env);
-            Value r = evaluateExpression(rhs, env);
-            if (vint(int ln) := l && vint(int rn) := r) return vint(ln + rn);
-            if (vfloat(real lf) := l && vfloat(real rf) := r) return vfloat(lf + rf);
-            throw "Type error in addition";
-        }
-        case subtract(AExpression lhs, AExpression rhs): {
-            Value l = evaluateExpression(lhs, env);
-            Value r = evaluateExpression(rhs, env);
-            if (vint(int ln) := l && vint(int rn) := r) return vint(ln - rn);
-            if (vfloat(real lf) := l && vfloat(real rf) := r) return vfloat(lf - rf);
-            throw "Type error in subtraction";
-        }
-        case multiply(AExpression lhs, AExpression rhs): {
-            Value l = evaluateExpression(lhs, env);
-            Value r = evaluateExpression(rhs, env);
-            if (vint(int ln) := l && vint(int rn) := r) return vint(ln * rn);
-            if (vfloat(real lf) := l && vfloat(real rf) := r) return vfloat(lf * rf);
-            throw "Type error in multiplication";
-        }
-        case divide(AExpression lhs, AExpression rhs): {
-            Value l = evaluateExpression(lhs, env);
-            Value r = evaluateExpression(rhs, env);
-            if (vint(int ln) := l && vint(int rn) := r) {
-                if (rn == 0) throw "Division by zero";
-                return vint(ln / rn);
-            }
-            if (vfloat(real lf) := l && vfloat(real rf) := r) {
-                if (rf == 0.0) throw "Division by zero";
-                return vfloat(lf / rf);
-            }
-            throw "Type error in division";
-        }
-        case lessThan(AExpression lhs, AExpression rhs): {
-            Value l = evaluateExpression(lhs, env);
-            Value r = evaluateExpression(rhs, env);
-            if (vint(int ln) := l && vint(int rn) := r) return vbool(ln < rn);
-            if (vfloat(real lf) := l && vfloat(real rf) := r) return vbool(lf < rf);
-            throw "Type error in comparison";
-        }
-        case greaterThan(AExpression lhs, AExpression rhs): {
-            Value l = evaluateExpression(lhs, env);
-            Value r = evaluateExpression(rhs, env);
-            if (vint(int ln) := l && vint(int rn) := r) return vbool(ln > rn);
-            if (vfloat(real lf) := l && vfloat(real rf) := r) return vbool(lf > rf);
-            throw "Type error in comparison";
-        }
-        case equal(AExpression lhs, AExpression rhs): {
-            Value l = evaluateExpression(lhs, env);
-            Value r = evaluateExpression(rhs, env);
-            return vbool(l == r);
-        }
-        case and(AExpression lhs, AExpression rhs): {
-            Value l = evaluateExpression(lhs, env);
-            if (!isTruthy(l)) return vbool(false);
-            Value r = evaluateExpression(rhs, env);
-            return vbool(isTruthy(r));
-        }
-        case or(AExpression lhs, AExpression rhs): {
-            Value l = evaluateExpression(lhs, env);
-            if (isTruthy(l)) return vbool(true);
-            Value r = evaluateExpression(rhs, env);
-            return vbool(isTruthy(r));
-        }
-        default: {
-            throw "Unimplemented expression: <expr>";
-        }
-    }
-}
-
-
-Value evaluatePrincipal(APrincipal p, Env env) {
-    switch(p) {
-        case boolean(bool b): return vbool(b);
-        case integer(int n): return vint(n);
-        case floating(real r): return vfloat(r);
-        case character(str c): return vchar(c);
-        case identifier(str name): {
-            if (name in env) {
-                return env[name];
-            }
-            throw "Undefined variable: <name>";
-        }
-        default: 
-            throw "Invalid principal value: <p>";
-    }
-}
- 
-
-// Check if a value is truthy
-bool isTruthy(vbool(bool b)) = b;
-bool isTruthy(vint(int n)) = n != 0;
-bool isTruthy(vnull()) = false;
-default bool isTruthy(Value v) = true;
-
-// Format a value for output
-str formatValue(vint(int n)) = "<n>";
-str formatValue(vfloat(real r)) = "<r>";
-str formatValue(vbool(bool b)) = "<b>";
-str formatValue(vchar(str c)) = "\'<c>\'";
-str formatValue(vstring(str s)) = "\"<s>\"";
-str formatValue(vlist(list[Value] elements)) = "[<intercalate(", ", [formatValue(e) | e <- elements])>]";
-str formatValue(vfunction(str name, _, _, _)) = "\<function <name>\>";
-str formatValue(vnull()) = "null";
-
-// ============================================================================
-// Example Programs
-// ============================================================================
-
-void testSimpleProgram() {
-    str program = "
-    'function do
-    '    x, y
-    '    x = 5
-    '    y = 10
-    '    x + y
-    'end main
-    ";
-    
-    runAULString(program);
-}
-
-void testExample() {
-    println("Testing simple AUL program...\n");
-    
-    str simpleProgram = 
-        "function do
-        '    true
-        'end test
+        data Point with int x, int y
+            constructor = struct(int x, int y)
+        end point
+        
+        function int distance(Point p) do
+            p.x * p.x + p.y * p.y
+        end dist
         ";
     
-    runAULString(simpleProgram);
+    println("\nTesting VALID program:");
+    processALUString(program);
+}
+
+void testInvalidProgram() {
+    str program = 
+        "// Test program with type errors
+        function int wrongReturn() do
+            true  // Returns bool instead of int!
+        end wrong
+        
+        data Point with int x, int y
+            constructor = struct(int x, int y)
+        end point
+        
+        function test() do
+            Point p = Point{x = 10, y = \"hello\"}  // Type error: string for int field
+            int result = p.z  // Error: field z doesnt exist
+        end test
+        ";
+    
+    println("\nTesting INVALID program:");
+    processALUString(program);
+}
+
+void testGradualTyping() {
+    str program = 
+        "// Test gradual typing (mixed typed and untyped)
+        function add(a, b) do  // Untyped function
+            a + b
+        end add
+        
+        function int typedAdd(int a, int b) do  // Typed function
+            a + b
+        end typedAdd
+        
+        data Point with x, y  // Untyped data
+            constructor = struct(x, y)
+        end point
+        ";
+    
+    println("\nTesting GRADUAL typing:");
+    processALUString(program);
+}
+
+void testComplexTypes() {
+    str program = 
+        "// Test complex types
+        type Matrix = int[][]
+        type StringList = string[]
+        
+        function processArray(int[] numbers) do
+            [1, 2, 3, 4, 5]
+        end process
+        
+        function tuple\<int, string\> getPair() do
+            (42, \"answer\")
+        end pair
+        
+        data Person with string name, int age
+            constructor = struct(string name, int age)
+        end person
+        
+        function test() do
+            Person p = Person{name = \"Alice\", age = 30}
+            int[] nums = [1, 2, 3]
+            cast\<float\>(42)
+        end test
+        ";
+    
+    println("\nTesting COMPLEX types:");
+    processALUString(program);
 }
 
 // ============================================================================
-// Help
+// Run All Tests
 // ============================================================================
 
-void help() {
-    println("========================================");
-    println("AUL Language - Rascal Implementation");
-    println("========================================");
-    println("");
-    println("Available functions:");
-    println("");
-    println("  runAULFile(|file:///path/to/program.alu|)");
-    println("    - Run an AUL program from a file");
-    println("");
-    println("  runAULString(\"program code\")");
-    println("    - Run an AUL program from a string");
-    println("");
-    println("  showAST(|file:///path/to/program.alu|)");
-    println("    - Parse and display the AST without executing");
-    println("");
-    println("  validateSyntax(|file:///path/to/program.alu|)");
-    println("    - Check if the syntax is valid");
-    println("");
-    println("  testExample()");
-    println("    - Run a simple test program");
-    println("");
-    println("  help()");
-    println("    - Show this help message");
-    println("");
-    println("========================================");
+void runAllTests() {
+    println("Running ALU Type Checker Tests");
+    println("=" * 60);
+    
+    testValidProgram();
+    testInvalidProgram();
+    testGradualTyping();
+    testComplexTypes();
+    
+    println("\n" + "=" * 60);
+    println("All tests completed!");
+}
+
+// ============================================================================
+void repl() {
+    println("ALU Language REPL - Type \"quit\" to exit");
+    println(repeat("=", 50));
+    
+    while (true) {
+        print("\nalu ");
+        str input = readln();
+        
+        if (input == "quit" || input == "exit") {
+            println("Goodbye!");
+            break;
+        }
+        
+        if (input == "help") {
+            println("Commands:");
+            println("  quit/exit - Exit the REPL");
+            println("  help      - Show this help");
+            println("  test      - Run all tests");
+            println("  Or enter any ALU code to parse and type check");
+            continue;
+        }
+        
+        if (input == "test") {
+            runAllTests();
+            continue;
+        }
+        
+        processALUString(input);
+    }
 }
